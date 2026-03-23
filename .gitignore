@@ -1,0 +1,26 @@
+# Virtual environment
+venv/
+
+# VS Code
+.vscode/
+
+# Datasets
+Dataset/
+DATASET_COMBINED/
+DATASETS_RANDOM_KAGGLE/
+
+# Models
+Models/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# ML files
+*.h5
+*.pt
+*.ckpt
+
+# Media
+*.mp4
+*.avi
