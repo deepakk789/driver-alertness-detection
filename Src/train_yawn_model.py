@@ -3,31 +3,30 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras import layers,models
 from tensorflow.keras.callbacks import EarlyStopping,ModelCheckpoint
 #data path
-data_dir="D:\project folder\DRIVER ALLERTNESS DETECTION SYSTEM\DATASET_COMBINED"
+data_dir=r"D:\project folder\DRIVER ALLERTNESS DETECTION SYSTEM\DATASET_COMBINED"
 
 #data generator
-datagen=ImageDataGenerator(
+train_datagen=ImageDataGenerator(
     rescale=1./255,
-    validation_split=0.2,
     rotation_range=10,
     zoom_range=0.1,
     horizontal_flip=True
 )
 
-train_data=datagen.flow_from_directory(
-    data_dir,
+val_datagen = ImageDataGenerator(rescale=1./255)
+
+train_data=train_datagen.flow_from_directory(
+    r"D:\project folder\DRIVER ALLERTNESS DETECTION SYSTEM\DATASET_COMBINED\TRAIN\YAWN_TRAIN",
     target_size=(96,96),
     batch_size=32,
     class_mode='binary',
-    subset='training'
 )
 
-val_data=datagen.flow_from_directory(
-    data_dir,
+val_data=val_datagen.flow_from_directory(
+    r"D:\project folder\DRIVER ALLERTNESS DETECTION SYSTEM\DATASET_COMBINED\VALIDATION\YAWN_VAL",
     target_size=(96,96),
     batch_size=32,
     class_mode='binary',
-    subset='validation'
 )
 
 '''making CNN model with the convolution layer(filter map) 
@@ -49,7 +48,7 @@ model=models.Sequential([
 
     layers.Flatten(),
     layers.Dense(128,activation='relu'),
-    layers.Dropout(0.5),
+    layers.Dropout(0.3),
 
     layers.Dense(1,activation='sigmoid')
 
@@ -70,6 +69,6 @@ callbacks=[
 history=model.fit(
     train_data,
     validation_data=val_data,
-    epochs=20,
+    epochs=10,
     callbacks=callbacks
 )
