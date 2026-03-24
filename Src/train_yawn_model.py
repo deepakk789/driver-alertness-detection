@@ -2,8 +2,7 @@ import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras import layers,models
 from tensorflow.keras.callbacks import EarlyStopping,ModelCheckpoint
-#data path
-data_dir=r"D:\project folder\DRIVER ALLERTNESS DETECTION SYSTEM\DATASET_COMBINED"
+
 
 #data generator
 train_datagen=ImageDataGenerator(
