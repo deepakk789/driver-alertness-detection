@@ -26,19 +26,26 @@ RIGHT_EYE_FULL = [
     336, 296, 334, 293, 300,  # eyebrow
     295, 285, 282,       # upper forehead side
 ]
-MOUTH = [13, 14, 78, 308]
+MOUTH = [
+    13, 14, 78, 308,  # main
+    82, 87, 317, 312, # upper/lower lips
+    95, 88, 178, 87,  # left side
+    318, 324, 402, 317 # right side
+]
 
 cap = cv2.VideoCapture(0)
 
-def crop_region(frame, landmarks, indices):
+def crop_region(frame, landmarks, indices, padding=10):
     h, w, _ = frame.shape
     points = [(int(landmarks[i].x * w), int(landmarks[i].y * h)) for i in indices]
 
     x_coords = [p[0] for p in points]
     y_coords = [p[1] for p in points]
 
-    x_min, x_max = max(0, min(x_coords)), min(w, max(x_coords))
-    y_min, y_max = max(0, min(y_coords)), min(h, max(y_coords))
+    x_min = max(0, min(x_coords) - padding)
+    x_max = min(w, max(x_coords) + padding)
+    y_min = max(0, min(y_coords) - padding)
+    y_max = min(h, max(y_coords) + padding)
 
     return frame[y_min:y_max, x_min:x_max]
 
@@ -52,8 +59,10 @@ while True:
     color = (0, 255, 255)
     eye_text = "-"
     yawn_text = "-"
-    eye_prob = 0
+    eye_prob= 0
     yawn_prob = 0
+    eye_pred= 0
+    yawn_pred = 0
 
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = face_mesh.process(rgb)
@@ -68,7 +77,7 @@ while True:
             right_eye = crop_region(frame, landmarks, RIGHT_EYE_FULL)
 
             # 😮 Mouth crop
-            mouth = crop_region(frame, landmarks, MOUTH)
+            mouth = crop_region(frame, landmarks, MOUTH ,padding=20)
 
             # Preprocess eyes
             # Left eye
@@ -89,7 +98,7 @@ while True:
             mouth_img = mouth_img / 255.0
             mouth_img = np.reshape(mouth_img, (1,96,96,3))
 
-            yawn_pred = yawn_model.predict(mouth_img, verbose=0)
+            yawn_pred = yawn_model.predict(mouth_img, verbose=0)[0][0]
 
             # 🔥 Decision Logic
             # Eye prediction
@@ -112,8 +121,8 @@ while True:
                 color = (0,255,0)
 
 
-        except:
-            pass
+        except Exception as e:
+            print("Error:", e)
 
     cv2.putText(frame, f"Eye: {eye_text}", (30, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 2)
@@ -127,7 +136,7 @@ while True:
     cv2.putText(frame, f"Eye Prob: {eye_pred:.2f}", (300, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,0), 2)
 
-    cv2.putText(frame, f"Yawn Prob: {yawn_pred[0][0]:.2f}", (300, 80),
+    cv2.putText(frame, f"Yawn Prob: {yawn_pred:.2f}", (300, 80),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,0), 2)
 
         
@@ -136,11 +145,14 @@ while True:
     cv2.imshow("Driver Alertness", frame)
 
     # Show eye windows safely
-    if 'left_eye' in locals() and left_eye.size != 0:
+    if left_eye is not None and left_eye.size > 0:
         cv2.imshow("Left Eye", left_eye)
 
-    if 'right_eye' in locals() and right_eye.size != 0:
+    if right_eye is not None and right_eye.size > 0:
         cv2.imshow("Right Eye", right_eye)
+
+    if mouth is not None and mouth.size > 0:
+        cv2.imshow("Mouth", mouth)
 
     if cv2.waitKey(1) & 0xFF == 27:
         break
