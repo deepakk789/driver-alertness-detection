@@ -2,6 +2,16 @@ import cv2
 import numpy as np
 import mediapipe as mp
 from tensorflow.keras.models import load_model
+import os
+
+# --- Alarm setup (plays sound when drowsy) ---
+try:
+    from playsound import playsound
+    ALARM_PATH = os.path.join(os.path.dirname(__file__), "..", "Alarm.wav", "alarm.wav")
+    ALARM_AVAILABLE = os.path.exists(ALARM_PATH)
+except ImportError:
+    ALARM_AVAILABLE = False
+    print("[INFO] playsound not installed. Alarm will not play. Run: pip install playsound")
 
 # Load models
 eye_model = load_model("Models/eye_model.h5")
@@ -35,6 +45,19 @@ MOUTH = [
 
 cap = cv2.VideoCapture(0)
 
+# --- Temporal Smoothing Counters ---
+# A normal blink lasts ~3-5 frames at 30fps (100-170ms).
+# We only flag DROWSY if eyes stay closed for CLOSED_FRAME_THRESHOLD
+# consecutive frames, filtering out natural blinks.
+CLOSED_FRAME_THRESHOLD = 12   # ~0.4 sec at 30fps → eyes closed this long = drowsy
+YAWN_FRAME_THRESHOLD   = 10   # ~0.33 sec at 30fps → sustained yawn = drowsy
+NO_FACE_THRESHOLD      = 30   # ~1 sec at 30fps → no face for this long = warning
+
+closed_counter = 0   # counts consecutive "eyes closed" frames
+yawn_counter   = 0   # counts consecutive "yawn" frames
+no_face_counter = 0  # counts consecutive "no face" frames
+alarm_playing  = False
+
 def crop_region(frame, landmarks, indices, padding=10):
     h, w, _ = frame.shape
     points = [(int(landmarks[i].x * w), int(landmarks[i].y * h)) for i in indices]
@@ -63,6 +86,9 @@ while True:
     yawn_prob = 0
     eye_pred= 0
     yawn_pred = 0
+    left_eye = None
+    right_eye = None
+    mouth = None
 
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = face_mesh.process(rgb)
@@ -72,9 +98,13 @@ while True:
 
         try:
 
-            # 👁️ Eye crop
-            left_eye = crop_region(frame, landmarks, LEFT_EYE_FULL)
-            right_eye = crop_region(frame, landmarks, RIGHT_EYE_FULL)
+            # 👁️ Eye crop (using tight contour, not full eyebrow)
+            # 33, 133 are corners. 160, 158, 153, 144 are eye contour
+            LEFT_EYE = [33, 160, 158, 133, 153, 144]
+            RIGHT_EYE = [362, 385, 387, 263, 373, 380]
+            
+            left_eye = crop_region(frame, landmarks, LEFT_EYE, padding=5)
+            right_eye = crop_region(frame, landmarks, RIGHT_EYE, padding=5)
 
             # 😮 Mouth crop
             mouth = crop_region(frame, landmarks, MOUTH ,padding=20)
@@ -100,29 +130,51 @@ while True:
 
             yawn_pred = yawn_model.predict(mouth_img, verbose=0)[0][0]
 
-            # 🔥 Decision Logic
+            # 🔥 Decision Logic with Temporal Smoothing
             # Eye prediction
-            if eye_pred < 0.5:
+            if eye_pred < 0.3:  # Lowered from 0.5 to reduce false "CLOSED" detections
                 eye_text = "CLOSED"
+                closed_counter += 1
             else:
                 eye_text = "OPEN"
+                closed_counter = 0
 
             # Yawn prediction
             if yawn_pred > 0.5:
                 yawn_text = "YAWN"
+                yawn_counter += 1
             else:
                 yawn_text = "NOT YAWN"
+                yawn_counter = 0
 
-            if eye_text == "CLOSED" or yawn_text == "YAWN":
+            # Reset no-face counter since we detected a face
+            no_face_counter = 0
+
+            # Drowsy only if eyes closed for sustained period OR yawning sustained
+            if closed_counter >= CLOSED_FRAME_THRESHOLD or yawn_counter >= YAWN_FRAME_THRESHOLD:
                 status = "DROWSY"
                 color = (0,0,255)
+                # Play alarm
+                if ALARM_AVAILABLE and not alarm_playing:
+                    import threading
+                    threading.Thread(target=playsound, args=(ALARM_PATH,), daemon=True).start()
+                    alarm_playing = True
             else:
                 status = "ALERT"
                 color = (0,255,0)
+                alarm_playing = False
 
 
         except Exception as e:
             print("Error:", e)
+    else:
+        # No face detected — increment counter
+        no_face_counter += 1
+        closed_counter = 0
+        yawn_counter = 0
+        if no_face_counter >= NO_FACE_THRESHOLD:
+            status = "NO FACE"
+            color = (0, 255, 255)
 
     cv2.putText(frame, f"Eye: {eye_text}", (30, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 2)
@@ -138,6 +190,12 @@ while True:
 
     cv2.putText(frame, f"Yawn Prob: {yawn_pred:.2f}", (300, 80),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,0), 2)
+
+    # Show temporal counters on screen for debugging
+    cv2.putText(frame, f"Eye Closed Frames: {closed_counter}/{CLOSED_FRAME_THRESHOLD}", (300, 120),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180,180,180), 1)
+    cv2.putText(frame, f"Yawn Frames: {yawn_counter}/{YAWN_FRAME_THRESHOLD}", (300, 145),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180,180,180), 1)
 
         
 
