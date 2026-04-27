@@ -49,7 +49,7 @@ cap = cv2.VideoCapture(0)
 # A normal blink lasts ~3-5 frames at 30fps (100-170ms).
 # We only flag DROWSY if eyes stay closed for CLOSED_FRAME_THRESHOLD
 # consecutive frames, filtering out natural blinks.
-CLOSED_FRAME_THRESHOLD = 12   # ~0.4 sec at 30fps → eyes closed this long = drowsy
+CLOSED_FRAME_THRESHOLD = 9   # ~0.4 sec at 30fps → eyes closed this long = drowsy
 YAWN_FRAME_THRESHOLD   = 10   # ~0.33 sec at 30fps → sustained yawn = drowsy
 NO_FACE_THRESHOLD      = 30   # ~1 sec at 30fps → no face for this long = warning
 
@@ -65,12 +65,27 @@ def crop_region(frame, landmarks, indices, padding=10):
     x_coords = [p[0] for p in points]
     y_coords = [p[1] for p in points]
 
-    x_min = max(0, min(x_coords) - padding)
-    x_max = min(w, max(x_coords) + padding)
-    y_min = max(0, min(y_coords) - padding)
-    y_max = min(h, max(y_coords) + padding)
+    x_min = min(x_coords)
+    x_max = max(x_coords)
+    y_min = min(y_coords)
+    y_max = max(y_coords)
+    
+    # Force a square bounding box to prevent distortion when resizing to 96x96
+    cx = (x_min + x_max) // 2
+    cy = (y_min + y_max) // 2
+    
+    box_w = x_max - x_min
+    box_h = y_max - y_min
+    max_dim = max(box_w, box_h)
+    
+    half_size = (max_dim // 2) + padding
+    
+    x1 = max(0, cx - half_size)
+    y1 = max(0, cy - half_size)
+    x2 = min(w, cx + half_size)
+    y2 = min(h, cy + half_size)
 
-    return frame[y_min:y_max, x_min:x_max]
+    return frame[y1:y2, x1:x2]
 
 while True:
     ret, frame = cap.read()
@@ -86,6 +101,7 @@ while True:
     yawn_prob = 0
     eye_pred= 0
     yawn_pred = 0
+    drowsiness_score = 0
     left_eye = None
     right_eye = None
     mouth = None
@@ -98,25 +114,21 @@ while True:
 
         try:
 
-            # 👁️ Eye crop (using tight contour, not full eyebrow)
-            # 33, 133 are corners. 160, 158, 153, 144 are eye contour
-            LEFT_EYE = [33, 160, 158, 133, 153, 144]
-            RIGHT_EYE = [362, 385, 387, 263, 373, 380]
-            
-            left_eye = crop_region(frame, landmarks, LEFT_EYE, padding=5)
-            right_eye = crop_region(frame, landmarks, RIGHT_EYE, padding=5)
+            # 👁️ Eye crop (using FULL region as trained)
+            left_eye = crop_region(frame, landmarks, LEFT_EYE_FULL, padding=10)
+            right_eye = crop_region(frame, landmarks, RIGHT_EYE_FULL, padding=10)
 
             # 😮 Mouth crop
             mouth = crop_region(frame, landmarks, MOUTH ,padding=20)
 
-            # Preprocess eyes
-            # Left eye
-            left_img = cv2.resize(left_eye, (96, 96)) / 255.0
+            # Preprocess eyes: Convert BGR (OpenCV) to RGB (Keras expects RGB)
+            left_eye_rgb = cv2.cvtColor(left_eye, cv2.COLOR_BGR2RGB)
+            left_img = cv2.resize(left_eye_rgb, (96, 96)) / 255.0
             left_img = np.reshape(left_img, (1, 96, 96, 3))
             left_pred = eye_model.predict(left_img, verbose=0)[0][0]
 
-            # Right eye
-            right_img = cv2.resize(right_eye, (96, 96)) / 255.0
+            right_eye_rgb = cv2.cvtColor(right_eye, cv2.COLOR_BGR2RGB)
+            right_img = cv2.resize(right_eye_rgb, (96, 96)) / 255.0
             right_img = np.reshape(right_img, (1, 96, 96, 3))
             right_pred = eye_model.predict(right_img, verbose=0)[0][0]
 
@@ -132,7 +144,7 @@ while True:
 
             # 🔥 Decision Logic with Temporal Smoothing
             # Eye prediction
-            if eye_pred < 0.3:  # Lowered from 0.5 to reduce false "CLOSED" detections
+            if eye_pred < 0.5:  # Reverted back to 0.5
                 eye_text = "CLOSED"
                 closed_counter += 1
             else:
@@ -150,18 +162,26 @@ while True:
             # Reset no-face counter since we detected a face
             no_face_counter = 0
 
-            # Drowsy only if eyes closed for sustained period OR yawning sustained
-            if closed_counter >= CLOSED_FRAME_THRESHOLD or yawn_counter >= YAWN_FRAME_THRESHOLD:
-                status = "DROWSY"
-                color = (0,0,255)
-                # Play alarm
+            # 🔥 Drowsiness Score Logic
+            # Eye closure is weighted heavily (x8), yawning is weighted lightly (x2).
+            drowsiness_score = (closed_counter * 8) + (yawn_counter * 2)
+
+            if drowsiness_score >= 96:
+                # E.g., Eyes closed for 12+ frames (12 * 8 = 96)
+                status = "HIGH DROWSINESS"
+                color = (0, 0, 255) # Red
                 if ALARM_AVAILABLE and not alarm_playing:
                     import threading
                     threading.Thread(target=playsound, args=(ALARM_PATH,), daemon=True).start()
                     alarm_playing = True
+            elif drowsiness_score >= 40:
+                # E.g., Eyes closed for 5+ frames, OR yawning for 20+ frames
+                status = "MILD DROWSINESS"
+                color = (0, 165, 255) # Orange
+                alarm_playing = False
             else:
                 status = "ALERT"
-                color = (0,255,0)
+                color = (0, 255, 0) # Green
                 alarm_playing = False
 
 
@@ -184,6 +204,9 @@ while True:
 
     cv2.putText(frame, f"Status: {status}", (30, 120),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, color, 3)
+
+    cv2.putText(frame, f"Score: {drowsiness_score}", (30, 150),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
     cv2.putText(frame, f"Eye Prob: {eye_pred:.2f}", (300, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,0), 2)
