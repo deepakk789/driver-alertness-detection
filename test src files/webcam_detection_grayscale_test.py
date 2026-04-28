@@ -148,14 +148,16 @@ while True:
             # 😮 Mouth crop
             mouth = crop_region(frame, landmarks, MOUTH ,padding=4)
 
-            # Preprocess eyes: Convert BGR (OpenCV) to RGB (Keras expects RGB)
-            left_eye_rgb = cv2.cvtColor(left_eye, cv2.COLOR_BGR2RGB)
-            left_img = cv2.resize(left_eye_rgb, (96, 96)) / 255.0
+            # Preprocess eyes: Convert to Grayscale first, then back to 3-channels to mimic training data
+            left_gray = cv2.cvtColor(left_eye, cv2.COLOR_BGR2GRAY)
+            left_gray_3ch = cv2.cvtColor(left_gray, cv2.COLOR_GRAY2RGB)
+            left_img = cv2.resize(left_gray_3ch, (96, 96)) / 255.0
             left_img = np.reshape(left_img, (1, 96, 96, 3))
             left_pred = eye_model.predict(left_img, verbose=0)[0][0]
 
-            right_eye_rgb = cv2.cvtColor(right_eye, cv2.COLOR_BGR2RGB)
-            right_img = cv2.resize(right_eye_rgb, (96, 96)) / 255.0
+            right_gray = cv2.cvtColor(right_eye, cv2.COLOR_BGR2GRAY)
+            right_gray_3ch = cv2.cvtColor(right_gray, cv2.COLOR_GRAY2RGB)
+            right_img = cv2.resize(right_gray_3ch, (96, 96)) / 255.0
             right_img = np.reshape(right_img, (1, 96, 96, 3))
             right_pred = eye_model.predict(right_img, verbose=0)[0][0]
 

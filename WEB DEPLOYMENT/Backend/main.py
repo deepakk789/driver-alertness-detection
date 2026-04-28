@@ -179,7 +179,7 @@ def predict(req: FrameRequest):
         try:
             left_eye  = crop_region(frame, landmarks, LEFT_EYE_FULL,  padding=10)
             right_eye = crop_region(frame, landmarks, RIGHT_EYE_FULL, padding=10)
-            mouth     = crop_region(frame, landmarks, MOUTH,           padding=20)
+            mouth     = crop_region(frame, landmarks, MOUTH,           padding=4)
 
             # Eye
             left_img  = cv2.resize(cv2.cvtColor(left_eye,  cv2.COLOR_BGR2RGB), (96,96)) / 255.0
