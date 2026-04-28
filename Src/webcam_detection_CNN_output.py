@@ -16,6 +16,7 @@ except ImportError:
 # Load models
 eye_model = load_model("Models/eye_model.h5")
 yawn_model = load_model("Models/yawn_model.h5")
+head_model = load_model("Models/head_model_mobilenet_tuned.h5")
 
 # MediaPipe setup
 mp_face_mesh = mp.solutions.face_mesh
@@ -52,10 +53,12 @@ cap = cv2.VideoCapture(0)
 CLOSED_FRAME_THRESHOLD = 9   # ~0.4 sec at 30fps → eyes closed this long = drowsy
 YAWN_FRAME_THRESHOLD   = 10   # ~0.33 sec at 30fps → sustained yawn = drowsy
 NO_FACE_THRESHOLD      = 30   # ~1 sec at 30fps → no face for this long = warning
+DISTRACTED_FRAME_THRESHOLD = 25 # ~1 sec at 30fps → looking away for this long = distracted
 
 closed_counter = 0   # counts consecutive "eyes closed" frames
 yawn_counter   = 0   # counts consecutive "yawn" frames
 no_face_counter = 0  # counts consecutive "no face" frames
+distracted_counter = 0 # counts consecutive "looking away" frames
 alarm_playing  = False
 
 def crop_region(frame, landmarks, indices, padding=10):
@@ -92,13 +95,15 @@ while True:
     if not ret:
         break
     
-    # Default values (always shown)
+    # Default values
     status = "NO FACE"
     color = (0, 255, 255)
     eye_text = "-"
     yawn_text = "-"
+    head_text = "-"
     eye_prob= 0
     yawn_prob = 0
+    head_pred = 0
     eye_pred= 0
     yawn_pred = 0
     drowsiness_score = 0
@@ -107,6 +112,28 @@ while True:
     mouth = None
 
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    # ==========================================
+    # 1. Head Pose Inference (Full Frame)
+    # ==========================================
+    # The head model was trained on full webcam frames, not cropped faces.
+    # Therefore, we pass the full resized frame to it directly.
+    # This also allows it to detect "AWAY" even if MediaPipe loses tracking.
+    head_img = cv2.resize(rgb, (96, 96)) / 255.0
+    head_img = np.reshape(head_img, (1, 96, 96, 3))
+    head_pred = head_model.predict(head_img, verbose=0)[0][0]
+
+    # Head Pose prediction (0=AWAY, 1=FORWARD)
+    if head_pred < 0.5:
+        head_text = "AWAY"
+        distracted_counter += 1
+    else:
+        head_text = "FORWARD"
+        distracted_counter = 0
+
+    # ==========================================
+    # 2. Eye & Yawn Inference (MediaPipe Crops)
+    # ==========================================
     results = face_mesh.process(rgb)
 
     if results.multi_face_landmarks:
@@ -166,7 +193,14 @@ while True:
             # Eye closure is weighted heavily (x8), yawning is weighted lightly (x2).
             drowsiness_score = (closed_counter * 8) + (yawn_counter * 2)
 
-            if drowsiness_score >= 96:
+            if distracted_counter >= DISTRACTED_FRAME_THRESHOLD:
+                status = "DISTRACTED"
+                color = (0, 0, 255) # Red
+                if ALARM_AVAILABLE and not alarm_playing:
+                    import threading
+                    threading.Thread(target=playsound, args=(ALARM_PATH,), daemon=True).start()
+                    alarm_playing = True
+            elif drowsiness_score >= 96:
                 # E.g., Eyes closed for 12+ frames (12 * 8 = 96)
                 status = "HIGH DROWSINESS"
                 color = (0, 0, 255) # Red
@@ -192,9 +226,19 @@ while True:
         no_face_counter += 1
         closed_counter = 0
         yawn_counter = 0
+        
+        # Note: We do NOT reset distracted_counter here. 
+        # If no face is detected, they might be looking extremely far away.
+        # The head model runs on the full frame and will update distracted_counter.
+
         if no_face_counter >= NO_FACE_THRESHOLD:
-            status = "NO FACE"
-            color = (0, 255, 255)
+            # If the head model also says they are distracted, show that.
+            if distracted_counter >= DISTRACTED_FRAME_THRESHOLD:
+                status = "DISTRACTED"
+                color = (0, 0, 255)
+            else:
+                status = "NO FACE"
+                color = (0, 255, 255)
 
     cv2.putText(frame, f"Eye: {eye_text}", (30, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 2)
@@ -202,10 +246,13 @@ while True:
     cv2.putText(frame, f"Yawn: {yawn_text}", (30, 80),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 2)
 
-    cv2.putText(frame, f"Status: {status}", (30, 120),
+    cv2.putText(frame, f"Head: {head_text}", (30, 110),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 2)
+
+    cv2.putText(frame, f"Status: {status}", (30, 150),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, color, 3)
 
-    cv2.putText(frame, f"Score: {drowsiness_score}", (30, 150),
+    cv2.putText(frame, f"Score: {drowsiness_score}", (30, 180),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
     cv2.putText(frame, f"Eye Prob: {eye_pred:.2f}", (300, 50),
@@ -214,10 +261,15 @@ while True:
     cv2.putText(frame, f"Yawn Prob: {yawn_pred:.2f}", (300, 80),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,0), 2)
 
+    cv2.putText(frame, f"Head Prob: {head_pred:.2f}", (300, 110),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,0), 2)
+
     # Show temporal counters on screen for debugging
-    cv2.putText(frame, f"Eye Closed Frames: {closed_counter}/{CLOSED_FRAME_THRESHOLD}", (300, 120),
+    cv2.putText(frame, f"Eye Closed Frames: {closed_counter}/{CLOSED_FRAME_THRESHOLD}", (300, 140),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180,180,180), 1)
-    cv2.putText(frame, f"Yawn Frames: {yawn_counter}/{YAWN_FRAME_THRESHOLD}", (300, 145),
+    cv2.putText(frame, f"Yawn Frames: {yawn_counter}/{YAWN_FRAME_THRESHOLD}", (300, 165),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180,180,180), 1)
+    cv2.putText(frame, f"Distracted Frames: {distracted_counter}/{DISTRACTED_FRAME_THRESHOLD}", (300, 190),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180,180,180), 1)
 
         
