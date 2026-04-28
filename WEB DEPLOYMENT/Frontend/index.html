@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Driver Alertness Detection System</title>
+  <meta name="description" content="Real-time driver alertness and drowsiness detection using deep learning. Monitors eyes, mouth, and head pose simultaneously."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">🚗</div>
+        <div>
+          <h1>Driver Alertness System</h1>
+          <span class="subtitle">Real-Time Drowsiness & Distraction Detection</span>
+        </div>
+      </div>
+      <div class="header-controls">
+        <div class="session-timer" id="sessionTimer">Session: 00:00</div>
+        <button class="btn-reset" id="btnStop" style="border-color: rgba(239,68,68,0.5); color: #ef4444;">🛑 Stop Detection</button>
+        <button class="btn-reset" id="btnReset">↺ New Session</button>
+        <div class="server-status" id="serverStatus">
+          <span class="dot"></span> Connecting...
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main>
+
+    <!-- Left Column: Live Feed -->
+    <section class="panel live-panel">
+      <h2 class="panel-title">📷 Live Feed</h2>
+
+      <div class="camera-wrapper">
+        <video id="webcam" autoplay playsinline muted></video>
+        <canvas id="captureCanvas" style="display:none;"></canvas>
+        <div class="camera-overlay" id="cameraOverlay">
+          <button class="btn-start" id="btnStart">▶ Start Detection</button>
+        </div>
+      </div>
+
+      <!-- Main Alert Status -->
+      <div class="status-card" id="statusCard">
+        <div class="status-icon" id="statusIcon">⏳</div>
+        <div class="status-text" id="statusText">WAITING</div>
+        <div class="status-sub" id="statusSub">Click Start to begin</div>
+      </div>
+
+      <!-- Three Model Badges -->
+      <div class="badge-row">
+        <div class="badge" id="badgeEye">
+          <div class="badge-label">👁 Eye</div>
+          <div class="badge-value" id="eyeStatus">—</div>
+          <div class="prob-bar-track"><div class="prob-bar" id="eyeBar"></div></div>
+          <div class="badge-prob" id="eyeProb">—</div>
+        </div>
+        <div class="badge" id="badgeYawn">
+          <div class="badge-label">😮 Yawn</div>
+          <div class="badge-value" id="yawnStatus">—</div>
+          <div class="prob-bar-track"><div class="prob-bar" id="yawnBar"></div></div>
+          <div class="badge-prob" id="yawnProb">—</div>
+        </div>
+        <div class="badge" id="badgeHead">
+          <div class="badge-label">🙆 Head</div>
+          <div class="badge-value" id="headStatus">—</div>
+          <div class="prob-bar-track"><div class="prob-bar" id="headBar"></div></div>
+          <div class="badge-prob" id="headProb">—</div>
+        </div>
+      </div>
+
+      <!-- Drowsiness Score -->
+      <div class="score-row">
+        <div class="score-label">Drowsiness Score</div>
+        <div class="score-value" id="drowsinessScore">0</div>
+        <div class="score-track">
+          <div class="score-fill" id="scoreFill"></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Right Column: Analytics -->
+    <section class="panel analytics-panel">
+      <h2 class="panel-title">📊 Session Analytics</h2>
+
+      <!-- Stats Row -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-num" id="statDuration">0:00</div>
+          <div class="stat-label">Session Time</div>
+        </div>
+        <div class="stat-card danger">
+          <div class="stat-num" id="statDistract">0</div>
+          <div class="stat-label">Distractions</div>
+        </div>
+        <div class="stat-card warning">
+          <div class="stat-num" id="statDrowsy">0</div>
+          <div class="stat-label">Drowsiness Events</div>
+        </div>
+        <div class="stat-card safe">
+          <div class="stat-num" id="statAvgScore">0</div>
+          <div class="stat-label">Avg. Score</div>
+        </div>
+      </div>
+
+      <!-- Live Alertness Chart -->
+      <div class="chart-container">
+        <div class="chart-title">Alertness Score — Last 60 seconds</div>
+        <canvas id="alertnessChart"></canvas>
+      </div>
+
+      <!-- Event Log -->
+      <div class="event-log-wrapper">
+        <div class="event-log-title">🔔 Alert Event Log</div>
+        <div class="event-log" id="eventLog">
+          <div class="event-placeholder">No events yet. Start detection to begin monitoring.</div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

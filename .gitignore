@@ -9,15 +9,15 @@ Dataset/
 DATASET_COMBINED/
 DATASETS_RANDOM_KAGGLE/
 
-# Models
-Models/
+# Models (MUST NOT BE IGNORED FOR CLOUD DEPLOYMENT)
+# Models/
 
 # Python cache
 __pycache__/
 *.pyc
 
-# ML files
-*.h5
+# ML files (Allowing .h5 for deployment)
+# *.h5
 *.pt
 *.ckpt
 
