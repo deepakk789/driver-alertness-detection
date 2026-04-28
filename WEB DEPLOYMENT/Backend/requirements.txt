@@ -3,5 +3,5 @@ uvicorn[standard]
 python-multipart
 tensorflow<2.16.0
 opencv-python
-mediapipe
+mediapipe==0.10.9
 numpy
