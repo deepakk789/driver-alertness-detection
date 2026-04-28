@@ -138,8 +138,15 @@ function startSession() {
   // Session timer display
   sessionTimerInterval = setInterval(updateSessionTimer, 1000);
 
-  // Start sending frames
-  detectInterval = setInterval(captureAndSend, 500); // 2 fps
+  // Start sending frames sequentially
+  detectionLoop();
+}
+
+async function detectionLoop() {
+  if (!detecting) return;
+  await captureAndSend();
+  // Wait 500ms before sending the next frame
+  setTimeout(detectionLoop, 500);
 }
 
 function updateSessionTimer() {
@@ -156,7 +163,6 @@ btnStop.addEventListener("click", () => {
   if (!detecting) return;
   
   // Stop detection
-  clearInterval(detectInterval);
   clearInterval(sessionTimerInterval);
   detecting = false;
 
@@ -175,7 +181,6 @@ btnStop.addEventListener("click", () => {
 btnReset.addEventListener("click", async () => {
   // Call the stop logic first to ensure intervals and camera are cleared
   if (detecting) {
-    clearInterval(detectInterval);
     clearInterval(sessionTimerInterval);
     detecting = false;
     if (webcamEl.srcObject) {
@@ -243,7 +248,7 @@ async function captureAndSend() {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ frame: base64 }),
-      signal:  AbortSignal.timeout(4000)
+      signal:  AbortSignal.timeout(15000) // Increase timeout for slow Render CPUs
     });
     const data = await res.json();
     updateUI(data);
