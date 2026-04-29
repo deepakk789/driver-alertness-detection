@@ -141,11 +141,11 @@ while True:
 
         try:
 
-            # 👁️ Eye crop (using FULL region as trained)
+            # Eye crop (using FULL region as trained)
             left_eye = crop_region(frame, landmarks, LEFT_EYE_FULL, padding=10)
             right_eye = crop_region(frame, landmarks, RIGHT_EYE_FULL, padding=10)
 
-            # 😮 Mouth crop
+            # Mouth crop
             mouth = crop_region(frame, landmarks, MOUTH ,padding=4)
 
             # Preprocess eyes: Convert BGR (OpenCV) to RGB (Keras expects RGB)
@@ -169,7 +169,7 @@ while True:
 
             yawn_pred = yawn_model.predict(mouth_img, verbose=0)[0][0]
 
-            # 🔥 Decision Logic with Temporal Smoothing
+            # Decision Logic with Temporal Smoothing
             # Eye prediction
             if eye_pred < 0.5:  # Reverted back to 0.5
                 eye_text = "CLOSED"
@@ -189,7 +189,7 @@ while True:
             # Reset no-face counter since we detected a face
             no_face_counter = 0
 
-            # 🔥 Drowsiness Score Logic
+            # Drowsiness Score Logic
             # Eye closure is weighted heavily (x8), yawning is weighted lightly (x2).
             drowsiness_score = (closed_counter * 8) + (yawn_counter * 2)
 
