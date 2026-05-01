@@ -5,20 +5,19 @@ venv/
 .vscode/
 
 # Datasets
-Dataset/
 DATASET_COMBINED/
 DATASETS_RANDOM_KAGGLE/
 HEAD_DATASET/
 
-# Models (MUST NOT BE IGNORED FOR CLOUD DEPLOYMENT)
-# Models/
+# Models
+Models/
+*.h5
 
 # Python cache
 __pycache__/
 *.pyc
 
-# ML files (Allowing .h5 for deployment)
-# *.h5
+# ML files
 *.pt
 *.ckpt
 
@@ -26,7 +25,10 @@ __pycache__/
 *.mp4
 *.avi
 
-# presentations
+# Presentations and Documents
 *.pptx
 *.docx
 *.pdf
+PPT/
+Presentation_Metrics/
+paper/
