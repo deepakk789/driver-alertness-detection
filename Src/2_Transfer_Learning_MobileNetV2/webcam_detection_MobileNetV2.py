@@ -4,11 +4,12 @@ Driver Alertness Detection — Real-Time Webcam Inference
 Model: MobileNetV2 (Transfer Learning)
   - eye_model_mobilenet_tuned.h5
   - yawn_model_mobilenet_tuned.h5
-  - head_model_mobilenet_tuned.h5
+  - Robust Head Pose Estimation (MediaPipe)
 
 IMPROVEMENTS:
-  - Added Grayscale-to-RGB conversion to match MRL dataset training domain.
-  - Tighter eye crop (removed eyebrow/forehead landmarks) to focus on the eye.
+  - Integrated Robust Head Pose Estimation (MediaPipe Geometric).
+  - Added Grayscale-to-RGB conversion for Eye detection.
+  - Added Temporal Smoothing for head angles.
 """
 
 import cv2
@@ -31,7 +32,7 @@ except ImportError:
 BASE_DIR = os.path.join(os.path.dirname(__file__), "..", "..")
 eye_model  = load_model(os.path.join(BASE_DIR, "Models", "eye_model_mobilenet_tuned.h5"))
 yawn_model = load_model(os.path.join(BASE_DIR, "Models", "yawn_model_mobilenet_tuned.h5"))
-head_model = load_model(os.path.join(BASE_DIR, "Models", "head_model_mobilenet_tuned.h5"))
+# head_model removed — Using Robust MediaPipe Estimation instead
 
 # MediaPipe setup
 mp_face_mesh = mp.solutions.face_mesh
@@ -50,11 +51,20 @@ YAWN_FRAME_THRESHOLD   = 10
 NO_FACE_THRESHOLD      = 30
 DISTRACTED_FRAME_THRESHOLD = 25
 
+# Head Pose Configuration
+YAW_THRESHOLD = 12
+PITCH_THRESHOLD = 12
+SMOOTHING_FACTOR = 0.1
+
 closed_counter = 0
 yawn_counter   = 0
 no_face_counter = 0
 distracted_counter = 0
 alarm_playing  = False
+
+# Smooth Angle Variables
+smooth_yaw = 0
+smooth_pitch = 0
 
 def crop_region(frame, landmarks, indices, padding=10):
     h, w, _ = frame.shape
@@ -99,20 +109,50 @@ while True:
     
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    # 1. Head Pose (Full Frame)
-    head_img = cv2.resize(rgb, (96, 96)) / 255.0
-    head_img = np.reshape(head_img, (1, 96, 96, 3))
-    head_pred = head_model.predict(head_img, verbose=0)[0][0]
+    # 1. Robust Head Pose Estimation (MediaPipe)
+    results = face_mesh.process(rgb)
+    
+    if results.multi_face_landmarks:
+        landmarks_obj = results.multi_face_landmarks[0]
+        face_3d, face_2d = [], []
+        h, w, _ = frame.shape
 
-    if head_pred < 0.5:
-        head_text = "AWAY"
-        distracted_counter += 1
+        for idx, lm in enumerate(landmarks_obj.landmark):
+            if idx in [1, 33, 263, 61, 291, 199]:
+                x, y = int(lm.x * w), int(lm.y * h)
+                face_2d.append([x, y])
+                face_3d.append([x, y, lm.z])
+
+        face_2d = np.array(face_2d, dtype=np.float64)
+        face_3d = np.array(face_3d, dtype=np.float64)
+
+        focal_length = 1 * w
+        cam_matrix = np.array([[focal_length, 0, w / 2], [0, focal_length, h / 2], [0, 0, 1]])
+        dist_matrix = np.zeros((4, 1), dtype=np.float64)
+
+        success, rot_vec, trans_vec = cv2.solvePnP(face_3d, face_2d, cam_matrix, dist_matrix)
+        rmat, _ = cv2.Rodrigues(rot_vec)
+        angles, _, _, _, _, _ = cv2.RQDecomp3x3(rmat)
+
+        # Smooth Angles
+        smooth_pitch = (angles[0] * 360 * SMOOTHING_FACTOR) + (smooth_pitch * (1 - SMOOTHING_FACTOR))
+        smooth_yaw   = (angles[1] * 360 * SMOOTHING_FACTOR) + (smooth_yaw * (1 - SMOOTHING_FACTOR))
+
+        # Determine if AWAY
+        if abs(smooth_yaw) > YAW_THRESHOLD or abs(smooth_pitch) > PITCH_THRESHOLD:
+            head_text = "AWAY"
+            distracted_counter += 1
+        else:
+            head_text = "FORWARD"
+            distracted_counter = 0
+        
+        # Use absolute yaw as a "pseudo-probability" for the UI display
+        head_pred = max(0, 1 - (abs(smooth_yaw) / 50)) 
     else:
-        head_text = "FORWARD"
-        distracted_counter = 0
+        head_text = "NO FACE"
+        head_pred = 0
 
     # 2. Eye & Yawn (Crops)
-    results = face_mesh.process(rgb)
     if results.multi_face_landmarks:
         landmarks = results.multi_face_landmarks[0].landmark
         try:
@@ -201,7 +241,7 @@ while True:
     cv2.putText(frame, f"Yawn: {yawn_counter}/{YAWN_FRAME_THRESHOLD}", (300, 165), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180,180,180), 1)
     cv2.putText(frame, f"Distracted: {distracted_counter}/{DISTRACTED_FRAME_THRESHOLD}", (300, 190), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180,180,180), 1)
 
-    cv2.putText(frame, "Model: MobileNetV2 (G-Fix)", (30, frame.shape[0]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200,200,200), 1)
+    cv2.putText(frame, "Model: MobileNetV2 + Robust Head Pose", (30, frame.shape[0]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200,200,200), 1)
 
     cv2.imshow("Driver Alertness [MobileNetV2]", frame)
     if cv2.waitKey(1) & 0xFF == 27: break
