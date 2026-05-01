@@ -28,10 +28,10 @@ except ImportError:
 # ===========================
 # Load Custom CNN Models
 # ===========================
-# Paths are relative to the project root (run from there)
-eye_model  = load_model("Models/eye_model.h5")
-yawn_model = load_model("Models/yawn_model.h5")
-head_model = load_model("Models/head_model.h5")
+BASE_DIR = os.path.join(os.path.dirname(__file__), "..", "..")
+eye_model  = load_model(os.path.join(BASE_DIR, "Models", "eye_model.h5"))
+yawn_model = load_model(os.path.join(BASE_DIR, "Models", "yawn_model.h5"))
+head_model = load_model(os.path.join(BASE_DIR, "Models", "head_model.h5"))
 
 print("[INFO] Custom CNN models loaded successfully.")
 
@@ -41,25 +41,10 @@ print("[INFO] Custom CNN models loaded successfully.")
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True)
 
-# Landmark indices for eye and mouth regions
-LEFT_EYE_FULL = [
-    33, 133,                        # eye corners
-    160, 158, 153, 144,             # eye contour
-    70, 63, 105, 66, 107,           # eyebrow
-    65, 55, 52,                     # upper forehead side
-]
-RIGHT_EYE_FULL = [
-    362, 263,                       # eye corners
-    385, 387, 373, 380,             # eye contour
-    336, 296, 334, 293, 300,        # eyebrow
-    295, 285, 282,                  # upper forehead side
-]
-MOUTH = [
-    13, 14, 78, 308,                # main
-    82, 87, 317, 312,               # upper/lower lips
-    95, 88, 178, 87,                # left side
-    318, 324, 402, 317              # right side
-]
+# Tighter Landmark Indices (Focused on features)
+LEFT_EYE = [33, 133, 160, 158, 153, 144]   # eye contour only
+RIGHT_EYE = [362, 263, 385, 387, 373, 380] # eye contour only
+MOUTH = [61, 291, 0, 17] # Extreme outer edges of lips
 
 cap = cv2.VideoCapture(0)
 
@@ -114,7 +99,7 @@ while True:
         break
 
     # Default display values
-    status         = "NO FACE"
+    status         = "DISTRACTED"
     color          = (0, 255, 255)
     eye_text       = "-"
     yawn_text      = "-"
@@ -149,10 +134,10 @@ while True:
         landmarks = results.multi_face_landmarks[0].landmark
 
         try:
-            # Crop eye and mouth regions
-            left_eye, l_box  = crop_region(frame, landmarks, LEFT_EYE_FULL, padding=10)
-            right_eye, r_box = crop_region(frame, landmarks, RIGHT_EYE_FULL, padding=10)
-            mouth, m_box     = crop_region(frame, landmarks, MOUTH, padding=4)
+            # Crop eye and mouth regions (Reduced padding to 5 for tight fit)
+            left_eye, l_box  = crop_region(frame, landmarks, LEFT_EYE, padding=5)
+            right_eye, r_box = crop_region(frame, landmarks, RIGHT_EYE, padding=5)
+            mouth, m_box     = crop_region(frame, landmarks, MOUTH, padding=0)
 
             # Draw Green Boxes on the main frame
             for (x1, y1, x2, y2) in [l_box, r_box, m_box]:
@@ -223,8 +208,8 @@ while True:
         closed_counter    = 0
         yawn_counter      = 0
         if no_face_counter >= NO_FACE_THRESHOLD:
-            status = "DISTRACTED" if distracted_counter >= DISTRACTED_FRAME_THRESHOLD else "NO FACE"
-            color = (0, 0, 255) if status == "DISTRACTED" else (0, 255, 255)
+            status = "DISTRACTED"
+            color = (0, 0, 255)
 
     # ===========================
     # Display Overlay

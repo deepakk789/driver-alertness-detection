@@ -38,7 +38,7 @@ def extract_frames(video_path, output_dir, prefix="", frame_interval=10):
     print(f"Done! Extracted {saved_count} frames to {output_dir}")
 
 if __name__ == "__main__":
-    base_dir = r"d:\project folder\DRIVER ALLERTNESS DETECTION SYSTEM\dataset\head_tilt"
+    base_dir = r"d:\project folder\DRIVER ALLERTNESS DETECTION SYSTEM\HEAD_DATASET\head_tilt"
     output_base_dir = os.path.join(base_dir, "extracted_frames")
     
     # Process "looking_away" (Not Alert)

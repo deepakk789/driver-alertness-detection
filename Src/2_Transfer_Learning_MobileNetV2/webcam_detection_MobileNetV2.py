@@ -28,9 +28,10 @@ except ImportError:
     print("[INFO] playsound not installed.")
 
 # Load models
-eye_model  = load_model("Models/eye_model_mobilenet_tuned.h5")
-yawn_model = load_model("Models/yawn_model_mobilenet_tuned.h5")
-head_model = load_model("Models/head_model_mobilenet_tuned.h5")
+BASE_DIR = os.path.join(os.path.dirname(__file__), "..", "..")
+eye_model  = load_model(os.path.join(BASE_DIR, "Models", "eye_model_mobilenet_tuned.h5"))
+yawn_model = load_model(os.path.join(BASE_DIR, "Models", "yawn_model_mobilenet_tuned.h5"))
+head_model = load_model(os.path.join(BASE_DIR, "Models", "head_model_mobilenet_tuned.h5"))
 
 # MediaPipe setup
 mp_face_mesh = mp.solutions.face_mesh
@@ -39,7 +40,7 @@ face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True)
 # Tighter Eye Landmarks (Standard Contour)
 LEFT_EYE  = [33, 133, 160, 158, 153, 144]
 RIGHT_EYE = [362, 263, 385, 387, 373, 380]
-MOUTH     = [13, 14, 78, 308, 82, 87, 317, 312]
+MOUTH     = [61, 291, 0, 17]             # Extreme outer edges of lips
 
 cap = cv2.VideoCapture(0)
 
@@ -90,7 +91,7 @@ while True:
     if not ret: break
     
     # Display elements
-    status = "NO FACE"
+    status = "DISTRACTED"
     color = (0, 255, 255)
     eye_text, yawn_text, head_text = "-", "-", "-"
     eye_pred, yawn_pred, head_pred = 0, 0, 0
@@ -118,7 +119,7 @@ while True:
             # Tighter eye crops (padding=5 for focus)
             left_eye, l_box  = crop_region(frame, landmarks, LEFT_EYE, padding=5)
             right_eye, r_box = crop_region(frame, landmarks, RIGHT_EYE, padding=5)
-            mouth, m_box     = crop_region(frame, landmarks, MOUTH, padding=4)
+            mouth, m_box     = crop_region(frame, landmarks, MOUTH, padding=0)
 
             # Draw Green Boxes on the main frame
             for (x1, y1, x2, y2) in [l_box, r_box, m_box]:
@@ -178,8 +179,8 @@ while True:
         no_face_counter += 1
         closed_counter, yawn_counter = 0, 0
         if no_face_counter >= NO_FACE_THRESHOLD:
-            status = "DISTRACTED" if distracted_counter >= DISTRACTED_FRAME_THRESHOLD else "NO FACE"
-            color = (0, 0, 255) if status == "DISTRACTED" else (0, 255, 255)
+            status = "DISTRACTED"
+            color = (0, 0, 255)
 
     # UI - Main Info
     cv2.putText(frame, f"Status: {status}", (30, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 3)
