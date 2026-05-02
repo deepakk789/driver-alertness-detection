@@ -66,10 +66,10 @@ MOUTH = [
 # ============================================================
 # Temporal Smoothing State (in-memory, per-server-session)
 # ============================================================
-CLOSED_FRAME_THRESHOLD     = 9
-YAWN_FRAME_THRESHOLD       = 10
-NO_FACE_THRESHOLD          = 30
-DISTRACTED_FRAME_THRESHOLD = 30
+CLOSED_FRAME_THRESHOLD     = 3
+YAWN_FRAME_THRESHOLD       = 3
+NO_FACE_THRESHOLD          = 3
+DISTRACTED_FRAME_THRESHOLD = 3
 HISTORY_MAX_LEN            = 120   # keep last 120 data points (~60s at 2fps)
 
 closed_counter    = 0
@@ -191,7 +191,7 @@ def predict(req: FrameRequest):
 
         YAW_THRESHOLD = 12
         PITCH_THRESHOLD = 12
-        SMOOTHING_FACTOR = 0.1
+        SMOOTHING_FACTOR = 0.8  # Increased from 0.1 because web app runs at ~2 FPS
 
         smooth_pitch = (angles[0] * 360 * SMOOTHING_FACTOR) + (smooth_pitch * (1 - SMOOTHING_FACTOR))
         smooth_yaw   = (angles[1] * 360 * SMOOTHING_FACTOR) + (smooth_yaw * (1 - SMOOTHING_FACTOR))
