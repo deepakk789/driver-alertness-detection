@@ -28,9 +28,8 @@ from tensorflow.keras.models import load_model
 # Paths — Models accessed from the parent project directory
 # ============================================================
 BASE_DIR   = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-EYE_MODEL  = os.path.join(BASE_DIR, "Models", "eye_model.h5")
-YAWN_MODEL = os.path.join(BASE_DIR, "Models", "yawn_model.h5")
-HEAD_MODEL = os.path.join(BASE_DIR, "Models", "head_model_mobilenet_tuned.h5")
+EYE_MODEL  = os.path.join(BASE_DIR, "Models", "eye_model_mobilenet_tuned.h5")
+YAWN_MODEL = os.path.join(BASE_DIR, "Models", "yawn_model_mobilenet_tuned.h5")
 
 # ============================================================
 # Load Models (once at server startup)
@@ -38,7 +37,6 @@ HEAD_MODEL = os.path.join(BASE_DIR, "Models", "head_model_mobilenet_tuned.h5")
 print("[INFO] Loading models...")
 eye_model  = load_model(EYE_MODEL)
 yawn_model = load_model(YAWN_MODEL)
-head_model = load_model(HEAD_MODEL)
 print("[INFO] All models loaded successfully.")
 
 # ============================================================
@@ -78,6 +76,9 @@ closed_counter    = 0
 yawn_counter      = 0
 no_face_counter   = 0
 distracted_counter= 0
+
+smooth_yaw        = 0.0
+smooth_pitch      = 0.0
 
 score_history  = deque(maxlen=HISTORY_MAX_LEN)  # [{timestamp, score, alert_level}]
 event_log      = []                              # [{timestamp, event_type, duration}]
@@ -138,6 +139,7 @@ class FrameRequest(BaseModel):
 @app.post("/predict")
 def predict(req: FrameRequest):
     global closed_counter, yawn_counter, no_face_counter, distracted_counter
+    global smooth_yaw, smooth_pitch
     global last_alert, last_alert_start
 
     # 1. Decode base64 frame to NumPy image
@@ -149,9 +151,9 @@ def predict(req: FrameRequest):
         return {"error": "Invalid frame"}
 
     # ---- Default values ----
-    eye_text       = "-"
-    yawn_text      = "-"
-    head_text      = "-"
+    eye_text       = ""
+    yawn_text      = ""
+    head_text      = ""
     eye_pred       = 0.0
     yawn_pred      = 0.0
     head_pred      = 0.0
@@ -159,33 +161,64 @@ def predict(req: FrameRequest):
 
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    # ---- Head Pose (Full Frame — matches training data) ----
-    head_img  = cv2.resize(rgb, (96, 96)) / 255.0
-    head_img  = np.reshape(head_img, (1, 96, 96, 3))
-    head_pred = float(head_model.predict(head_img, verbose=0)[0][0])
-
-    if head_pred < 0.5:
-        head_text = "AWAY"
-        distracted_counter += 1
-    else:
-        head_text = "FORWARD"
-        distracted_counter = 0
-
-    # ---- Eye & Yawn (MediaPipe Crops) ----
+    # ---- Inference via MediaPipe ----
     results = face_mesh.process(rgb)
 
     if results.multi_face_landmarks:
-        landmarks = results.multi_face_landmarks[0].landmark
+        landmarks_obj = results.multi_face_landmarks[0]
+        landmarks = landmarks_obj.landmark
+        
+        # --- 1. Robust Head Pose Estimation ---
+        face_3d, face_2d = [], []
+        h, w, _ = frame.shape
+
+        for idx, lm in enumerate(landmarks_obj.landmark):
+            if idx in [1, 33, 263, 61, 291, 199]:
+                x, y = int(lm.x * w), int(lm.y * h)
+                face_2d.append([x, y])
+                face_3d.append([x, y, lm.z])
+
+        face_2d = np.array(face_2d, dtype=np.float64)
+        face_3d = np.array(face_3d, dtype=np.float64)
+
+        focal_length = 1 * w
+        cam_matrix = np.array([[focal_length, 0, w / 2], [0, focal_length, h / 2], [0, 0, 1]])
+        dist_matrix = np.zeros((4, 1), dtype=np.float64)
+
+        success, rot_vec, trans_vec = cv2.solvePnP(face_3d, face_2d, cam_matrix, dist_matrix)
+        rmat, _ = cv2.Rodrigues(rot_vec)
+        angles, _, _, _, _, _ = cv2.RQDecomp3x3(rmat)
+
+        YAW_THRESHOLD = 12
+        PITCH_THRESHOLD = 12
+        SMOOTHING_FACTOR = 0.1
+
+        smooth_pitch = (angles[0] * 360 * SMOOTHING_FACTOR) + (smooth_pitch * (1 - SMOOTHING_FACTOR))
+        smooth_yaw   = (angles[1] * 360 * SMOOTHING_FACTOR) + (smooth_yaw * (1 - SMOOTHING_FACTOR))
+
+        if abs(smooth_yaw) > YAW_THRESHOLD or abs(smooth_pitch) > PITCH_THRESHOLD:
+            head_text = "AWAY"
+            distracted_counter += 1
+        else:
+            head_text = "FORWARD"
+            distracted_counter = 0
+            
+        head_pred = max(0.0, 1.0 - (abs(smooth_yaw) / 50.0))
+
+        # --- 2. Eye & Yawn (MediaPipe Crops) ---
         try:
             left_eye  = crop_region(frame, landmarks, LEFT_EYE_FULL,  padding=10)
             right_eye = crop_region(frame, landmarks, RIGHT_EYE_FULL, padding=10)
             mouth     = crop_region(frame, landmarks, MOUTH,           padding=4)
 
-            # Eye
-            left_img  = cv2.resize(cv2.cvtColor(left_eye,  cv2.COLOR_BGR2RGB), (96,96)) / 255.0
-            right_img = cv2.resize(cv2.cvtColor(right_eye, cv2.COLOR_BGR2RGB), (96,96)) / 255.0
-            left_pred  = float(eye_model.predict(np.reshape(left_img,  (1,96,96,3)), verbose=0)[0][0])
-            right_pred = float(eye_model.predict(np.reshape(right_img, (1,96,96,3)), verbose=0)[0][0])
+            # Eye (MobileNet expects 3-channel grayscale-like for MRL dataset)
+            left_gray  = cv2.resize(cv2.cvtColor(left_eye,  cv2.COLOR_BGR2GRAY), (96, 96))
+            right_gray = cv2.resize(cv2.cvtColor(right_eye, cv2.COLOR_BGR2GRAY), (96, 96))
+            left_img   = cv2.merge([left_gray, left_gray, left_gray]) / 255.0
+            right_img  = cv2.merge([right_gray, right_gray, right_gray]) / 255.0
+
+            left_pred  = float(eye_model.predict(np.expand_dims(left_img, axis=0), verbose=0)[0][0])
+            right_pred = float(eye_model.predict(np.expand_dims(right_img, axis=0), verbose=0)[0][0])
             eye_pred   = (left_pred + right_pred) / 2
 
             # Yawn
@@ -217,14 +250,16 @@ def predict(req: FrameRequest):
     # ---- Alert Level Logic ----
     drowsiness_score = (closed_counter * 8) + (yawn_counter * 2)
 
-    if distracted_counter >= DISTRACTED_FRAME_THRESHOLD:
+    # 3 States: DISTRACTED, DROWSY, ALERT
+    if no_face_counter >= NO_FACE_THRESHOLD:
         alert_level = "DISTRACTED"
-    elif drowsiness_score >= 96:
-        alert_level = "HIGH DROWSINESS"
+        head_text = ""
+        eye_text = ""
+        yawn_text = ""
+    elif distracted_counter >= DISTRACTED_FRAME_THRESHOLD:
+        alert_level = "DISTRACTED"
     elif drowsiness_score >= 40:
-        alert_level = "MILD DROWSINESS"
-    elif no_face_counter >= NO_FACE_THRESHOLD:
-        alert_level = "NO FACE"
+        alert_level = "DROWSY"
     else:
         alert_level = "ALERT"
 
@@ -284,8 +319,10 @@ def get_events():
 @app.post("/reset")
 def reset_session():
     global closed_counter, yawn_counter, no_face_counter, distracted_counter
+    global smooth_yaw, smooth_pitch
     global last_alert, last_alert_start
     closed_counter = yawn_counter = no_face_counter = distracted_counter = 0
+    smooth_yaw = smooth_pitch = 0.0
     last_alert = last_alert_start = None
     score_history.clear()
     event_log.clear()

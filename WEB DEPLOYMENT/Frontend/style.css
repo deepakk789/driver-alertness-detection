@@ -361,8 +361,20 @@ main {
   .stats-grid { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 600px) {
-  header { padding: 0 16px; }
-  main { padding: 0 16px 40px; }
-  .stats-grid { grid-template-columns: 1fr 1fr; }
-  .badge-row { grid-template-columns: 1fr; }
+  header { padding: 0 16px; height: auto; }
+  .header-inner { flex-direction: column; height: auto; padding: 12px 0; gap: 12px; }
+  .header-controls { flex-wrap: wrap; justify-content: center; gap: 10px; }
+  main { padding: 0 16px 20px; margin-top: 16px; gap: 16px; }
+  .stats-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card { padding: 10px 8px; }
+  .stat-num { font-size: 20px; }
+  .badge-row { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .badge { padding: 8px 6px; }
+  .badge-label { font-size: 10px; margin-bottom: 3px; }
+  .badge-value { font-size: 11px; margin-bottom: 5px; }
+  .badge-prob { font-size: 9px; margin-top: 3px; }
+  .status-text { font-size: 18px; }
+  .score-value { font-size: 24px; }
+  .btn-start { padding: 12px 24px; font-size: 14px; }
+  .panel { padding: 16px; }
 }

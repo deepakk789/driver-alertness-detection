@@ -270,13 +270,11 @@ function updateUI(data) {
   if (alert_level === "ALERT") {
     icon = "✅"; sub = "Driver is alert and attentive"; cardClass = "alert";
   } else if (alert_level === "DISTRACTED") {
-    icon = "⚠️"; sub = "Head turned away from road!"; cardClass = "distracted";
-  } else if (alert_level === "HIGH DROWSINESS") {
-    icon = "🚨"; sub = "Severe drowsiness detected! STOP!"; cardClass = "high";
-  } else if (alert_level === "MILD DROWSINESS") {
-    icon = "😴"; sub = "Early signs of drowsiness detected."; cardClass = "mild";
+    icon = "⚠️"; sub = "Focus lost or camera blocked"; cardClass = "distracted";
+  } else if (alert_level === "DROWSY") {
+    icon = "🚨"; sub = "Drowsiness detected! STOP!"; cardClass = "high";
   } else {
-    icon = "❓"; sub = "No face detected"; cardClass = "";
+    icon = "❓"; sub = "Status unknown"; cardClass = "";
   }
   setStatus(alert_level, icon, alert_level, sub, cardClass);
 
@@ -317,7 +315,7 @@ function updateUI(data) {
       distractCount++;
       statDistract.textContent = distractCount;
       logEvent(timeLabel, alert_level, "orange");
-    } else if (alert_level === "HIGH DROWSINESS" || alert_level === "MILD DROWSINESS") {
+    } else if (alert_level === "DROWSY") {
       drowsyCount++;
       statDrowsy.textContent = drowsyCount;
       logEvent(timeLabel, alert_level, "red");
