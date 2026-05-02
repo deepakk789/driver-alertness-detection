@@ -258,7 +258,7 @@ def predict(req: FrameRequest):
         yawn_text = ""
     elif distracted_counter >= DISTRACTED_FRAME_THRESHOLD:
         alert_level = "DISTRACTED"
-    elif drowsiness_score >= 40:
+    elif drowsiness_score >= 24:
         alert_level = "DROWSY"
     else:
         alert_level = "ALERT"
