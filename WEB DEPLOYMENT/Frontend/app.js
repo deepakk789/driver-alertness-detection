@@ -61,6 +61,10 @@ let distractCount  = 0;
 let drowsyCount    = 0;
 let lastAlertLevel = null;
 
+// ---- Alarm Setup ----
+const alarmSound = new Audio("/static/alarm.wav");
+alarmSound.loop = true;
+
 // ---- Chart Setup ----
 const chartCanvas = document.getElementById("alertnessChart");
 const alertChart  = new Chart(chartCanvas, {
@@ -175,6 +179,10 @@ btnStop.addEventListener("click", () => {
   // Update UI
   setStatus("STOPPED", "🛑", "Detection Stopped", "Camera released");
   overlay.classList.remove("hidden");
+
+  // Stop alarm
+  alarmSound.pause();
+  alarmSound.currentTime = 0;
 });
 
 // ---- Reset ----
@@ -223,6 +231,10 @@ btnReset.addEventListener("click", async () => {
 
   // Show overlay again
   overlay.classList.remove("hidden");
+
+  // Stop alarm
+  alarmSound.pause();
+  alarmSound.currentTime = 0;
 });
 
 // ---- Capture Frame & Send ----
@@ -322,6 +334,18 @@ function updateUI(data) {
     }
   }
   lastAlertLevel = alert_level;
+
+  // -- Alarm Logic --
+  if (alert_level === "DISTRACTED" || alert_level === "DROWSY") {
+    if (alarmSound.paused) {
+      alarmSound.play().catch(e => console.warn("Audio play blocked by browser:", e));
+    }
+  } else {
+    if (!alarmSound.paused) {
+      alarmSound.pause();
+      alarmSound.currentTime = 0;
+    }
+  }
 }
 
 // ---- Helpers ----

@@ -219,19 +219,17 @@ while True:
             # ---- Status Logic ----
             if distracted_counter >= DISTRACTED_FRAME_THRESHOLD:
                 status, color = "DISTRACTED", (0, 0, 255)
-            elif drowsiness_score >= 96:
-                status, color = "HIGH DROWSINESS", (0, 0, 255)
-            elif drowsiness_score >= 40:
-                status, color = "MILD DROWSINESS", (0, 165, 255)
+            elif drowsiness_score >= 24:
+                status, color = "DROWSY", (0, 0, 255)
             else:
                 status, color = "ALERT", (0, 255, 0)
 
             # Alarm
-            if (status in ["DISTRACTED", "HIGH DROWSINESS"]) and ALARM_AVAILABLE and not alarm_playing:
+            if (status in ["DISTRACTED", "DROWSY"]) and ALARM_AVAILABLE and not alarm_playing:
                 import threading
                 threading.Thread(target=playsound, args=(ALARM_PATH,), daemon=True).start()
                 alarm_playing = True
-            elif status not in ["DISTRACTED", "HIGH DROWSINESS"]:
+            elif status not in ["DISTRACTED", "DROWSY"]:
                 alarm_playing = False
 
         except Exception as e:
