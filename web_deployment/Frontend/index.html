@@ -7,7 +7,6 @@
   <meta name="description" content="Real-time driver alertness and drowsiness detection using deep learning. Monitors eyes, mouth, and head pose simultaneously."/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="/static/style.css"/>
 </head>
 <body>
@@ -130,6 +129,9 @@
 
   </main>
 
-  <script src="/static/app.js"></script>
+  <!-- Chart.js must be a global before the ES module loads -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Main entry point — type="module" enables ES module imports -->
+  <script type="module" src="/static/js/main.js"></script>
 </body>
 </html>
