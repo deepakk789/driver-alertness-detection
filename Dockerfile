@@ -26,5 +26,5 @@ COPY . .
 # Expose the port the app runs on
 EXPOSE 8000
 
-# Command to run the FastAPI server
-CMD uvicorn web_deployment.Backend.main:app --host 0.0.0.0 --port ${PORT:-8000}
+WORKDIR /app/web_deployment/Backend
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
