@@ -31,6 +31,7 @@ let totalScores          = [];
 let distractCount        = 0;
 let drowsyCount          = 0;
 let lastAlertLevel       = null;
+let currentSessionId     = null;   // assigned by server on first WS result
 
 const drowsinessScoreEl = document.getElementById("drowsinessScore");
 
@@ -65,7 +66,10 @@ btnReset.addEventListener("click", async () => {
   stopSession();
   sessionStart = null;
 
-  await fetch("/reset", { method: "POST" }).catch(() => {});
+  const resetUrl = currentSessionId
+    ? `/reset?session_id=${currentSessionId}`
+    : "/reset";
+  await fetch(resetUrl, { method: "POST" }).catch(() => {});
 
   totalScores   = [];
   distractCount = drowsyCount = 0;
@@ -160,7 +164,11 @@ function onInferenceResult(data) {
     return;
   }
 
-  const { alert_level, drowsiness_score, timestamp } = data;
+  const { alert_level, drowsiness_score, timestamp, session_id } = data;
+
+  // Store the server-assigned session ID on first result
+  if (session_id && !currentSessionId) currentSessionId = session_id;
+
   const timeLabel = timestamp
     ? timestamp.slice(11, 19)
     : new Date().toLocaleTimeString();

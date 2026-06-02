@@ -1,60 +1,72 @@
 """
 inference.py — All CV / ML inference logic
 ============================================
-Exposes a single public function:  run_inference(base64_frame) -> dict
-Reads/writes shared state from state.py.
+Public API:
+    run_inference(base64_frame: str, session: SessionState) -> dict
+
+All state mutations happen on the caller-supplied SessionState object,
+so this function is safe to call concurrently from multiple WebSocket
+connections without any locking.
 """
 
 import base64
+import logging
+
 import cv2
 import numpy as np
 import mediapipe as mp
 from datetime import datetime
 
-import state
+from state import SessionState
 from models import eye_model, yawn_model
+
+logger = logging.getLogger(__name__)
 
 # ---- MediaPipe setup ----
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh    = mp_face_mesh.FaceMesh(refine_landmarks=True)
 
-# ---- Landmark index groups ----
+# ---- Landmark index groups (MediaPipe Face Mesh indices) ----
 LEFT_EYE_FULL  = [33, 133, 160, 158, 153, 144, 70, 63, 105, 66, 107, 65, 55, 52]
 RIGHT_EYE_FULL = [362, 263, 385, 387, 373, 380, 336, 296, 334, 293, 300, 295, 285, 282]
 MOUTH          = [13, 14, 78, 308, 82, 87, 317, 312, 95, 88, 178, 87, 318, 324, 402, 317]
 
-# ---- Tunable thresholds ----
-CLOSED_FRAME_THRESHOLD     = 3
+# ---- Thresholds ----
 NO_FACE_THRESHOLD          = 3
 DISTRACTED_FRAME_THRESHOLD = 3
 YAW_THRESHOLD              = 12
 PITCH_THRESHOLD            = 12
-SMOOTHING_FACTOR           = 0.8   # higher = faster response at 2 fps
+SMOOTHING_FACTOR           = 0.8   # higher = faster response at low fps
 
 
 # ============================================================
 # Private helpers
 # ============================================================
 
-def _crop_region(frame, landmarks, indices, padding: int = 10):
-    """Crop a tightly bounded region around a set of facial landmarks."""
+def _crop_region(frame, landmarks, indices: list, padding: int = 10):
+    """Crop a bounding box around a set of facial landmark indices."""
     h, w, _ = frame.shape
-    points   = [(int(landmarks[i].x * w), int(landmarks[i].y * h)) for i in indices]
+    points = [(int(landmarks[i].x * w), int(landmarks[i].y * h)) for i in indices]
     xs = [p[0] for p in points]
     ys = [p[1] for p in points]
-    cx = (min(xs) + max(xs)) // 2
-    cy = (min(ys) + max(ys)) // 2
+    cx   = (min(xs) + max(xs)) // 2
+    cy   = (min(ys) + max(ys)) // 2
     half = (max(max(xs) - min(xs), max(ys) - min(ys)) // 2) + padding
     return frame[max(0, cy - half):min(h, cy + half),
                  max(0, cx - half):min(w, cx + half)]
 
 
-def _head_pose(landmarks_obj, frame_shape):
-    """Estimate yaw & pitch from 6 key landmarks. Returns (yaw, pitch)."""
+def _head_pose(landmarks_obj, frame_shape) -> tuple[float, float]:
+    """
+    Estimate yaw and pitch from 6 stable facial landmarks using
+    OpenCV's solvePnP (PnP = Perspective-n-Point).
+
+    Returns (yaw_degrees, pitch_degrees).
+    """
     h, w, _ = frame_shape
     face_2d, face_3d = [], []
     for idx, lm in enumerate(landmarks_obj.landmark):
-        if idx in [1, 33, 263, 61, 291, 199]:
+        if idx in [1, 33, 263, 61, 291, 199]:   # nose, eyes, chin corners, forehead
             x, y = int(lm.x * w), int(lm.y * h)
             face_2d.append([x, y])
             face_3d.append([x, y, lm.z])
@@ -75,16 +87,36 @@ def _head_pose(landmarks_obj, frame_shape):
 # Public API
 # ============================================================
 
-def run_inference(base64_frame: str) -> dict:
+def run_inference(base64_frame: str, session: SessionState) -> dict:
     """
-    Decode a base64 JPEG, run all inference pipelines,
-    update shared state, and return a result dict.
+    Decode a base64 JPEG frame, run the full three-pipeline inference
+    (eye state, yawn state, head pose), update the supplied session
+    state, and return a result dictionary.
+
+    Parameters
+    ----------
+    base64_frame : str
+        Raw base64-encoded JPEG data (no data-URI prefix).
+    session : SessionState
+        The caller's isolated session object. All counter mutations
+        happen here — no global state is touched.
+
+    Returns
+    -------
+    dict
+        eye_status, yawn_status, head_status, probabilities,
+        drowsiness_score, alert_level, timestamp.
+        On decode failure: {"error": "<reason>"}.
     """
     # 1. Decode frame
-    img_data = base64.b64decode(base64_frame)
-    frame    = cv2.imdecode(np.frombuffer(img_data, np.uint8), cv2.IMREAD_COLOR)
+    try:
+        img_data = base64.b64decode(base64_frame)
+    except Exception:
+        return {"error": "Base64 decode failed"}
+
+    frame = cv2.imdecode(np.frombuffer(img_data, np.uint8), cv2.IMREAD_COLOR)
     if frame is None:
-        return {"error": "Invalid frame"}
+        return {"error": "Frame could not be decoded as an image"}
 
     # Defaults
     eye_text = yawn_text = head_text = ""
@@ -96,21 +128,21 @@ def run_inference(base64_frame: str) -> dict:
         lm_obj    = results.multi_face_landmarks[0]
         landmarks = lm_obj.landmark
 
-        # ---- 2. Head pose ----
+        # ---- 2. Head pose (solvePnP) ----
         raw_yaw, raw_pitch = _head_pose(lm_obj, frame.shape)
-        state.smooth_yaw   = raw_yaw   * SMOOTHING_FACTOR + state.smooth_yaw   * (1 - SMOOTHING_FACTOR)
-        state.smooth_pitch = raw_pitch * SMOOTHING_FACTOR + state.smooth_pitch * (1 - SMOOTHING_FACTOR)
+        session.smooth_yaw   = raw_yaw   * SMOOTHING_FACTOR + session.smooth_yaw   * (1 - SMOOTHING_FACTOR)
+        session.smooth_pitch = raw_pitch * SMOOTHING_FACTOR + session.smooth_pitch * (1 - SMOOTHING_FACTOR)
 
-        if abs(state.smooth_yaw) > YAW_THRESHOLD or abs(state.smooth_pitch) > PITCH_THRESHOLD:
+        if abs(session.smooth_yaw) > YAW_THRESHOLD or abs(session.smooth_pitch) > PITCH_THRESHOLD:
             head_text = "AWAY"
-            state.distracted_counter += 1
+            session.distracted_counter += 1
         else:
             head_text = "FORWARD"
-            state.distracted_counter = 0
+            session.distracted_counter = 0
 
-        head_pred = max(0.0, 1.0 - abs(state.smooth_yaw) / 50.0)
+        head_pred = max(0.0, 1.0 - abs(session.smooth_yaw) / 50.0)
 
-        # ---- 3. Eye & yawn models ----
+        # ---- 3. Eye & yawn CNN models ----
         try:
             l_eye = _crop_region(frame, landmarks, LEFT_EYE_FULL,  padding=10)
             r_eye = _crop_region(frame, landmarks, RIGHT_EYE_FULL, padding=10)
@@ -124,46 +156,47 @@ def run_inference(base64_frame: str) -> dict:
             rp = float(eye_model.predict(np.expand_dims(_prep_eye(r_eye), 0), verbose=0)[0][0])
             eye_pred  = (lp + rp) / 2.0
             yawn_pred = float(yawn_model.predict(
-                np.reshape(cv2.resize(mouth, (96, 96)) / 255.0, (1, 96, 96, 3)), verbose=0)[0][0])
+                np.reshape(cv2.resize(mouth, (96, 96)) / 255.0, (1, 96, 96, 3)),
+                verbose=0)[0][0])
 
             eye_text  = "CLOSED" if eye_pred  < 0.5 else "OPEN"
             yawn_text = "YAWN"   if yawn_pred > 0.5 else "NOT YAWN"
 
-            state.closed_counter = state.closed_counter + 1 if eye_text  == "CLOSED" else 0
-            state.yawn_counter   = state.yawn_counter   + 1 if yawn_text == "YAWN"   else 0
-            state.no_face_counter = 0
+            session.closed_counter  = session.closed_counter + 1 if eye_text  == "CLOSED" else 0
+            session.yawn_counter    = session.yawn_counter   + 1 if yawn_text == "YAWN"   else 0
+            session.no_face_counter = 0
 
         except Exception as e:
-            print(f"[WARN] Crop/predict error: {e}")
+            logger.warning("Landmark crop/predict failed: %s", e)
 
     else:
-        state.no_face_counter   += 1
-        state.closed_counter     = 0
-        state.yawn_counter       = 0
+        session.no_face_counter  += 1
+        session.closed_counter    = 0
+        session.yawn_counter      = 0
 
-    # ---- 4. Alert level ----
-    drowsiness_score = (state.closed_counter * 8) + (state.yawn_counter * 2)
+    # ---- 4. Compute alert level ----
+    drowsiness_score = (session.closed_counter * 8) + (session.yawn_counter * 2)
 
-    if state.no_face_counter >= NO_FACE_THRESHOLD:
+    if session.no_face_counter >= NO_FACE_THRESHOLD:
         alert_level = "DISTRACTED"
         head_text = eye_text = yawn_text = ""
-    elif state.distracted_counter >= DISTRACTED_FRAME_THRESHOLD:
+    elif session.distracted_counter >= DISTRACTED_FRAME_THRESHOLD:
         alert_level = "DISTRACTED"
     elif drowsiness_score >= 24:
         alert_level = "DROWSY"
     else:
         alert_level = "ALERT"
 
-    # ---- 5. Update event log ----
+    # ---- 5. Record events ----
     now = datetime.now().isoformat(timespec="seconds")
-    if alert_level != "ALERT" and alert_level != state.last_alert:
-        state.last_alert       = alert_level
-        state.last_alert_start = now
-        state.event_log.append({"timestamp": now, "event_type": alert_level})
+    if alert_level != "ALERT" and alert_level != session.last_alert:
+        session.last_alert       = alert_level
+        session.last_alert_start = now
+        session.event_log.append({"timestamp": now, "event_type": alert_level})
     if alert_level == "ALERT":
-        state.last_alert = None
+        session.last_alert = None
 
-    state.score_history.append({
+    session.score_history.append({
         "timestamp": now, "score": drowsiness_score, "alert_level": alert_level
     })
 
@@ -175,7 +208,7 @@ def run_inference(base64_frame: str) -> dict:
         "yawn_prob":          round(yawn_pred, 3),
         "head_prob":          round(head_pred, 3),
         "drowsiness_score":   drowsiness_score,
-        "distracted_counter": state.distracted_counter,
+        "distracted_counter": session.distracted_counter,
         "alert_level":        alert_level,
         "timestamp":          now,
     }
