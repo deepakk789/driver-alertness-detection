@@ -4,18 +4,22 @@ venv/
 # VS Code
 .vscode/
 
-# Datasets
-DATASET_COMBINED/
-DATASETS_RANDOM_KAGGLE/
-HEAD_DATASET/
-
-# Models
-Models/
-*.h5
-
 # Python cache
 __pycache__/
 *.pyc
+
+# Datasets and Media
+dataset_combined/
+head_dataset/
+*.zip
+dataset_combined.zip
+
+# Temporary / Specific Files
+project_review.md
+DDD.docx
+
+# Models
+
 
 # ML files
 *.pt
@@ -26,9 +30,5 @@ __pycache__/
 *.avi
 
 # Presentations and Documents
-*.pptx
-*.docx
-*.pdf
-PPT/
-Presentation_Metrics/
-paper/
+# (Allowed for upload)
+docs/paper
