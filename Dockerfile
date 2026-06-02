@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only the requirements first to leverage Docker cache
-COPY ["WEB DEPLOYMENT/Backend/requirements.txt", "./requirements.txt"]
+COPY ["web_deployment/Backend/requirements.txt", "./requirements.txt"]
 
 # Install Python dependencies
 ENV PIP_ROOT_USER_ACTION=ignore
@@ -27,4 +27,4 @@ COPY . .
 EXPOSE 8000
 
 # Command to run the FastAPI server
-CMD uvicorn "WEB DEPLOYMENT.Backend.main:app" --host 0.0.0.0 --port ${PORT:-8000}
+CMD uvicorn web_deployment.Backend.main:app --host 0.0.0.0 --port ${PORT:-8000}
