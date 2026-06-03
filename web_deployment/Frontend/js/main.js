@@ -39,7 +39,7 @@ const drowsinessScoreEl = document.getElementById("drowsinessScore");
 // Open WebSocket on page load
 // Server-status indicator updates on every connect/disconnect.
 // ============================================================
-connect(onInferenceResult, (connected) => setServerStatus(connected));
+connect(onInferenceResult, (status) => setServerStatus(status));
 
 // ============================================================
 // Button: Start

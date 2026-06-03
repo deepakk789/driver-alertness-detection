@@ -16,6 +16,7 @@ import logging
 from fastapi import APIRouter, Query, HTTPException
 
 import state
+from models import models_ready
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -70,11 +71,11 @@ def reset_session(session_id: str | None = Query(default=None)):
 
 @router.get("/health", summary="Health check")
 def health():
-    """Liveness probe — confirms models are loaded and server is up."""
+    """Liveness probe — confirms server is up and whether models are loaded."""
     return {
-        "status":         "ok",
-        "models_loaded":  True,
-        "active_sessions": len(state.sessions),
+        "status":           "ok",
+        "models_loaded":    models_ready.is_set(),
+        "active_sessions":  len(state.sessions),
     }
 
 

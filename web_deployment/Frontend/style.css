@@ -105,8 +105,9 @@ header {
   background: var(--text-muted);
   animation: pulse 2s infinite;
 }
-.server-status.online .dot  { background: var(--green); }
-.server-status.offline .dot { background: var(--red); animation: none; }
+.server-status.online .dot   { background: var(--green); animation: none; }
+.server-status.offline .dot  { background: var(--red);   animation: none; }
+.server-status.loading .dot  { background: var(--orange); }
 
 @keyframes pulse {
   0%,100% { opacity: 1; }

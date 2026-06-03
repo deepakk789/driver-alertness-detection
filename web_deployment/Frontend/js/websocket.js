@@ -3,30 +3,33 @@
  * ======================================================
  * Handles: open, close, send, receive, auto-reconnect.
  *
+ * Status is driven by HTTP /health polling (not just WS open/close)
+ * so Render cold starts (server up but models loading) are shown
+ * correctly as "Loading..." instead of "Offline".
+ *
  * Exports:
  *   connect(onResult, onStatus)  — open WS and register callbacks
  *   disconnect()                 — gracefully close WS
  *   sendFrame(base64)            — send a frame for inference
  *   isConnected()                — true if WS is currently OPEN
  *
- * Protocol:
- *   Send    →  JSON { "frame": "<base64 JPEG>" }
- *   Receive →  JSON { eye_status, yawn_status, head_status,
- *                     eye_prob, yawn_prob, head_prob,
- *                     drowsiness_score, alert_level, timestamp }
+ * onStatus is called with one of: "connecting" | "loading" | "online" | "offline"
  */
 
-// Build the WS URL from the current page's host so it works
-// both in local dev (ws://localhost:8000/ws) and on Render/production (wss://).
-const _proto  = window.location.protocol === "https:" ? "wss" : "ws";
-const WS_URL  = `${_proto}://${window.location.host}/ws`;
-const RECONNECT_DELAY_MS     = 3000;
-const CONNECT_TIMEOUT_MS     = 6000;   // show Offline if no response in 6 s
+// Auto-detect ws:// vs wss:// based on page protocol.
+// Render serves HTTPS, so we need wss:// there.
+const _proto = window.location.protocol === "https:" ? "wss" : "ws";
+const WS_URL = `${_proto}://${window.location.host}/ws`;
 
-let socket          = null;
-let _onResult       = null;   // callback(data)  — called per inference result
-let _onStatus       = null;   // callback(bool)  — called on connect / disconnect
+const RECONNECT_DELAY_MS = 5000;   // wait 5 s between WS reconnect attempts
+const HEALTH_POLL_MS     = 4000;   // poll /health every 4 s
+
+let socket           = null;
+let _onResult        = null;   // callback(data)  — called per inference result
+let _onStatus        = null;   // callback(string) — "connecting"|"loading"|"online"|"offline"
 let _shouldReconnect = false;
+let _healthTimer     = null;
+let _wsConnected     = false;
 
 // ============================================================
 // Public API
@@ -34,24 +37,24 @@ let _shouldReconnect = false;
 
 /**
  * Open the WebSocket and register event callbacks.
- * Will automatically try to reconnect if the connection drops.
+ * Starts a /health poll loop so the status indicator is accurate
+ * even during Render cold-start model loading.
  *
  * @param {function} onResult  — called with parsed JSON result from server
- * @param {function} onStatus  — called with (connected: boolean)
+ * @param {function} onStatus  — called with status string
  */
 export function connect(onResult, onStatus) {
   _onResult        = onResult;
   _onStatus        = onStatus;
   _shouldReconnect = true;
-  _open();
 
-  // If the socket never opens within CONNECT_TIMEOUT_MS, mark as offline
-  // so the user doesn't see "Connecting..." forever.
-  setTimeout(() => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      _onStatus?.(false);
-    }
-  }, CONNECT_TIMEOUT_MS);
+  _onStatus?.("connecting");
+
+  // Start health polling — this drives the status dot
+  _startHealthPoll();
+
+  // Open the WS in parallel
+  _open();
 }
 
 /**
@@ -68,6 +71,7 @@ export function sendFrame(base64Frame) {
 /** Gracefully close the WebSocket (no auto-reconnect after this). */
 export function disconnect() {
   _shouldReconnect = false;
+  _stopHealthPoll();
   if (socket) {
     socket.close(1000, "Session ended by user");
     socket = null;
@@ -80,16 +84,61 @@ export function isConnected() {
 }
 
 // ============================================================
-// Private helpers
+// Health polling — drives the status indicator
+// ============================================================
+
+function _startHealthPoll() {
+  _stopHealthPoll();
+  _pollHealth();                                    // immediate first check
+  _healthTimer = setInterval(_pollHealth, HEALTH_POLL_MS);
+}
+
+function _stopHealthPoll() {
+  if (_healthTimer !== null) {
+    clearInterval(_healthTimer);
+    _healthTimer = null;
+  }
+}
+
+async function _pollHealth() {
+  try {
+    const res  = await fetch("/health", { signal: AbortSignal.timeout(3000) });
+    const data = await res.json();
+
+    if (!res.ok) {
+      _onStatus?.("offline");
+      return;
+    }
+
+    if (!data.models_loaded) {
+      // Server is up but TF models are still loading (Render cold start)
+      _onStatus?.("loading");
+    } else if (_wsConnected) {
+      _onStatus?.("online");
+    } else {
+      // Models ready but WS hasn't opened yet — still connecting
+      _onStatus?.("connecting");
+    }
+  } catch {
+    // fetch failed — server not reachable
+    _onStatus?.("offline");
+  }
+}
+
+// ============================================================
+// WebSocket lifecycle
 // ============================================================
 
 function _open() {
+  if (!_shouldReconnect) return;
   console.log(`[WS] Connecting → ${WS_URL}`);
   socket = new WebSocket(WS_URL);
 
   socket.onopen = () => {
     console.log("[WS] Connected ✓");
-    _onStatus?.(true);
+    _wsConnected = true;
+    // Health poll will pick this up on next tick and call _onStatus("online")
+    _pollHealth();
   };
 
   socket.onmessage = (event) => {
@@ -103,7 +152,7 @@ function _open() {
 
   socket.onclose = (event) => {
     console.warn(`[WS] Disconnected (code ${event.code})`);
-    _onStatus?.(false);
+    _wsConnected = false;
     if (_shouldReconnect) {
       console.log(`[WS] Reconnecting in ${RECONNECT_DELAY_MS / 1000}s…`);
       setTimeout(_open, RECONNECT_DELAY_MS);

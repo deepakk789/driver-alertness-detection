@@ -138,8 +138,15 @@ export function resetBadges() {
 // Server Status Indicator
 // ============================================================
 
-/** Toggle the server status dot between online / offline. */
-export function setServerStatus(online) {
-  serverStatus.className = `server-status ${online ? "online" : "offline"}`;
-  serverStatus.innerHTML = `<span class="dot"></span> Server ${online ? "Online" : "Offline"}`;
+/** Toggle the server status dot. status = "connecting" | "loading" | "online" | "offline" */
+export function setServerStatus(status) {
+  const map = {
+    connecting: { cls: "",         label: "Connecting..."    },
+    loading:    { cls: "loading",  label: "Server Loading…"  },
+    online:     { cls: "online",   label: "Server Online"    },
+    offline:    { cls: "offline",  label: "Server Offline"   },
+  };
+  const { cls, label } = map[status] ?? map.connecting;
+  serverStatus.className = `server-status ${cls}`.trim();
+  serverStatus.innerHTML = `<span class="dot"></span> ${label}`;
 }
