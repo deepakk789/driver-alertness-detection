@@ -42,7 +42,7 @@ async def alertness_websocket(websocket: WebSocket):
     session     = SessionState()
     state.sessions[session_id] = session
 
-    client = websocket.client.host
+    client = websocket.client.host if websocket.client else "unknown"
     logger.info("WebSocket connected  session=%s  client=%s", session_id, client)
 
     try:

@@ -18,7 +18,7 @@ import mediapipe as mp
 from datetime import datetime
 
 from state import SessionState
-from models import eye_model, yawn_model, models_ready
+import models  # access models.eye_model at call time, not import time
 
 logger = logging.getLogger(__name__)
 
@@ -109,8 +109,11 @@ def run_inference(base64_frame: str, session: SessionState) -> dict:
         On decode failure: {"error": "<reason>"}.
     """
     # 0. Guard — models still loading on cold start
-    if not models_ready.is_set() or eye_model is None or yawn_model is None:
+    if not models.models_ready.is_set() or models.eye_model is None or models.yawn_model is None:
         return {"error": "Models are still loading, please wait a moment and retry."}
+
+    eye_model  = models.eye_model
+    yawn_model = models.yawn_model
 
     # 1. Decode frame
     try:
