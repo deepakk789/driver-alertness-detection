@@ -133,6 +133,31 @@ Go to `http://localhost:8000`, click **Start Detection**, and allow camera acces
 
 ---
 
+## Run local webcam detection (no server required)
+
+Want to test the models directly on your machine without running the web server? Two standalone scripts are available that run detection using your system webcam and display the output in a pop-up OpenCV window.
+
+**Requirements:** Python 3.10+, a webcam, all packages from `requirements.txt`
+
+**Option 1 — Custom CNN** (trained from scratch)
+```bash
+python src/1_Custom_CNN/webcam_detection_CustomCNN.py
+```
+- Uses `eye_model.h5` and `yawn_model.h5`
+- Lighter model, faster on low-end hardware
+
+**Option 2 — MobileNetV2** (transfer learning, higher accuracy)
+```bash
+python src/2_Transfer_Learning_MobileNetV2/webcam_detection_MobileNetV2.py
+```
+- Uses `eye_model_mobilenet_tuned.h5` and `yawn_model_mobilenet_tuned.h5`
+- Same model used in the live web deployment
+- Better accuracy, especially for eye detection
+
+> **Note:** Run both scripts from the **project root directory**, not from inside the `src/` folder. Press `ESC` to exit the webcam window.
+
+---
+
 ## Multi-user support
 
 - Each browser tab or device that connects receives an isolated session

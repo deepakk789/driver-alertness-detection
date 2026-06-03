@@ -38,10 +38,15 @@ yawn_model = load_model(os.path.join(BASE_DIR, "Models", "yawn_model_mobilenet_t
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True)
 
-# Tighter Eye Landmarks (Standard Contour)
-LEFT_EYE  = [33, 133, 160, 158, 153, 144]
-RIGHT_EYE = [362, 263, 385, 387, 373, 380]
-MOUTH     = [61, 291, 0, 17]             # Extreme outer edges of lips
+# --- OLD (Tighter Landmarks - Inaccurate) ---
+# LEFT_EYE  = [33, 133, 160, 158, 153, 144]
+# RIGHT_EYE = [362, 263, 385, 387, 373, 380]
+# MOUTH     = [61, 291, 0, 17]
+
+# --- NEW (Wider Landmarks matching web dev inference.py) ---
+LEFT_EYE  = [33, 133, 160, 158, 153, 144, 70, 63, 105, 66, 107, 65, 55, 52]
+RIGHT_EYE = [362, 263, 385, 387, 373, 380, 336, 296, 334, 293, 300, 295, 285, 282]
+MOUTH     = [13, 14, 78, 308, 82, 87, 317, 312, 95, 88, 178, 87, 318, 324, 402, 317]
 
 cap = cv2.VideoCapture(0)
 
@@ -156,10 +161,15 @@ while True:
     if results.multi_face_landmarks:
         landmarks = results.multi_face_landmarks[0].landmark
         try:
-            # Tighter eye crops (padding=5 for focus)
-            left_eye, l_box  = crop_region(frame, landmarks, LEFT_EYE, padding=5)
-            right_eye, r_box = crop_region(frame, landmarks, RIGHT_EYE, padding=5)
-            mouth, m_box     = crop_region(frame, landmarks, MOUTH, padding=0)
+            # --- OLD (Tighter crops) ---
+            # left_eye, l_box  = crop_region(frame, landmarks, LEFT_EYE, padding=5)
+            # right_eye, r_box = crop_region(frame, landmarks, RIGHT_EYE, padding=5)
+            # mouth, m_box     = crop_region(frame, landmarks, MOUTH, padding=0)
+
+            # --- NEW (Wider padding matching web dev inference.py) ---
+            left_eye, l_box  = crop_region(frame, landmarks, LEFT_EYE, padding=10)
+            right_eye, r_box = crop_region(frame, landmarks, RIGHT_EYE, padding=10)
+            mouth, m_box     = crop_region(frame, landmarks, MOUTH, padding=4)
 
             # Draw Green Boxes on the main frame
             for (x1, y1, x2, y2) in [l_box, r_box, m_box]:
