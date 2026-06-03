@@ -2,7 +2,7 @@
 
 A real-time driver monitoring system that detects drowsiness and distraction through a webcam. The system runs in the browser — open the dashboard, grant camera access, and detection starts immediately.
 
-**Custom Dataset:** The models in this project were trained on a custom, curated dataset of 60,000+ images which I have open-sourced and published on Kaggle.
+**Dataset:** The models were trained on a curated composite dataset of 60,000+ images (aggregating public data with custom-collected frames), which I have published on Kaggle.
 
 [![Dataset](https://img.shields.io/badge/Dataset-Kaggle-20BEFF?logo=kaggle)](https://www.kaggle.com/datasets/de080105/driver-drowsiness-detection-dataset)
 
