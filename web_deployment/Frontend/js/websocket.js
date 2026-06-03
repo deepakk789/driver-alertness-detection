@@ -17,9 +17,11 @@
  */
 
 // Build the WS URL from the current page's host so it works
-// both in local dev (ws://localhost:8000/ws) and on Render/production.
-const WS_URL = `ws://${window.location.host}/ws`;
-const RECONNECT_DELAY_MS = 3000;
+// both in local dev (ws://localhost:8000/ws) and on Render/production (wss://).
+const _proto  = window.location.protocol === "https:" ? "wss" : "ws";
+const WS_URL  = `${_proto}://${window.location.host}/ws`;
+const RECONNECT_DELAY_MS     = 3000;
+const CONNECT_TIMEOUT_MS     = 6000;   // show Offline if no response in 6 s
 
 let socket          = null;
 let _onResult       = null;   // callback(data)  — called per inference result
@@ -42,6 +44,14 @@ export function connect(onResult, onStatus) {
   _onStatus        = onStatus;
   _shouldReconnect = true;
   _open();
+
+  // If the socket never opens within CONNECT_TIMEOUT_MS, mark as offline
+  // so the user doesn't see "Connecting..." forever.
+  setTimeout(() => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      _onStatus?.(false);
+    }
+  }, CONNECT_TIMEOUT_MS);
 }
 
 /**
