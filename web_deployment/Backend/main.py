@@ -49,6 +49,7 @@ app.include_router(ws_router)     # WS  /ws
 
 
 # ---- Dashboard entry point ----
+@app.head("/", include_in_schema=False)
 @app.get("/", include_in_schema=False)
 def serve_dashboard():
     """Serve the frontend HTML dashboard."""
