@@ -31,13 +31,26 @@ app = FastAPI(
     description="Real-time driver drowsiness and distraction detection via WebSocket.",
 )
 
-# ---- CORS ----
+# ---- CORS (Restricted Origins) ----
+DEFAULT_ORIGINS = (
+    "https://driver-alertness-detection-ksve.onrender.com,"
+    "http://localhost:8000,"
+    "http://127.0.0.1:8000,"
+    "http://localhost:3000,"
+    "http://127.0.0.1:5500"
+)
+raw_origins = os.getenv("ALLOWED_ORIGINS", DEFAULT_ORIGINS)
+allowed_origins = [origin.strip().rstrip("/") for origin in raw_origins.split(",") if origin.strip()]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
 
 # ---- Static files (Frontend) ----
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Frontend"))
